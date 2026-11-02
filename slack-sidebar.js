@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Slack: sidebar additions
 // @namespace    http://tampermonkey.net/
-// @version      2026-10-21
-// @description  Adds rows right after "Threads" in Slack's sidebar: "Scheduled" opens the Scheduled tab directly, "My activity" searches from:@Arj.
+// @version      2026-11-02
+// @description  Adds rows right after "Threads" in Slack's sidebar: "Scheduled" opens the Scheduled tab directly and shows the scheduled count, "My activity" searches from:@Arj.
 // @author       Arjun
 // @match        https://app.slack.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=slack.com
@@ -24,9 +24,13 @@
   //    .click() does nothing. Once open, the search input is focused.
   //  - the first Enter turns "from:@Arj" into a filter chip; a second Enter runs the search,
   //    which closes the [data-qa="search_autocomplete"] popup.
+  // Verified against Slack web on 2026-11-02:
+  //  - the scheduled count on Drafts & sent is a .p-outbox_link__badge (a schedule-send svg plus
+  //    the number as a bare text node) inside a .p-outbox_link__badge_list.
   const THREADS_ROW = '#Vall_threads';
   const DRAFTS_LINK = '[data-qa="channel_sidebar_pdrafts"]';
   const SCHEDULED_TAB = '[data-qa="outbox_tab_scheduled"]';
+  const SCHEDULED_BADGE = `${DRAFTS_LINK} .p-outbox_link__badge:has(svg[data-qa="schedule-send"])`;
   const SEARCH_BUTTON = '[data-qa="top_nav_search"]';
   const SEARCH_POPUP = '[data-qa="search_autocomplete"]';
   const ACTIVITY_QUERY = 'from:@Arj';
@@ -97,12 +101,24 @@
     return svg;
   }
 
-  // Rows added after Threads, in order. icon returns an <svg> to reuse from Slack's own UI.
+  // A copy of the scheduled count Slack shows at the end of the Drafts & sent row (a clock and a
+  // number), kept in its badge list for the layout but without the list's other badges.
+  function scheduledBadge() {
+    const badge = document.querySelector(SCHEDULED_BADGE);
+    if (!badge) return null;
+    const list = badge.parentElement.cloneNode(false);
+    list.appendChild(badge.cloneNode(true));
+    return list;
+  }
+
+  // Rows added after Threads, in order. icon returns an <svg> to reuse from Slack's own UI,
+  // badge an element to mirror at the end of the row.
   const ITEMS = [
     {
       id: 'arj-scheduled',
       label: 'Scheduled',
       icon: scheduledIcon,
+      badge: scheduledBadge,
       open: openScheduled,
       isSelected: isScheduledOpen,
     },
@@ -178,6 +194,17 @@
       const transform = `translateY(${y + ROW_HEIGHT * (i + 1)}px)`;
       if (row.style.transform !== transform) {
         row.style.cssText = `top: 0px; transform: ${transform}; height: ${ROW_HEIGHT}px;`;
+      }
+
+      // Re-copied whenever Slack's own badge changes, and dropped when it goes away.
+      const badge = item.badge ? item.badge() : null;
+      const ours = row.querySelector('.arj-badge');
+      if (!badge) {
+        ours?.remove();
+      } else {
+        badge.classList.add('arj-badge');
+        if (!ours) row.firstElementChild.appendChild(badge);
+        else if (ours.outerHTML !== badge.outerHTML) ours.replaceWith(badge);
       }
 
       // While our page is open, highlight our row instead of Drafts & sent.
