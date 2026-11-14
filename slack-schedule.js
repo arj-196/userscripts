@@ -213,6 +213,15 @@
     });
   }
 
+  // Slack keeps the hovered row in React state, so it doesn't know the pointer moved onto our
+  // row and leaves the previous row highlighted. Hide that stale highlight with CSS only: removing
+  // the class would desync React, which then wouldn't re-highlight the row on the way back.
+  const style = document.createElement('style');
+  style.textContent = `
+    ${MENU}:has(#${ITEM_ID}:hover) .${HIGHLIGHT}:not(#${ITEM_ID}) { background: transparent; color: inherit; }
+  `;
+  document.head.appendChild(style);
+
   new MutationObserver(() => {
     for (const menu of document.querySelectorAll(MENU)) {
       if (menu.querySelector(OPTION) && !menu.querySelector(`#${ITEM_ID}`)) addItem(menu);
